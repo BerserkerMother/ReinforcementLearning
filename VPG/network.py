@@ -16,22 +16,18 @@ class VPG(nn.Module):
 
         # define Actor and Critic, Critic uses target network
         self.actor = Actor(self.num_state_features, self.num_actions)
-        self.critic = Critic(self.num_state_features, self.num_actions)
-        self.critic_target = Critic(self.num_state_features, self.num_actions)
+        self.value_estimator = Critic(self.num_state_features, self.num_actions)
 
         # define optimizer
         self.actor_optimizer = torch.optim.RMSprop(self.actor.parameters(), lr=self.a)
-        self.critic_optimizer = torch.optim.RMSprop(self.critic.parameters(), lr=self.b)
+        self.value_optimizer = torch.optim.RMSprop(self.value_estimator.parameters(), lr=self.b)
 
         # define reply buffer
         self.reply_buffer = ReplyBuffer(memory_size, self.num_state_features)
 
-    def update_target_network(self):
-        self.critic_target.load_state_dict(self.critic.state_dict())
-
     def optimize(self):
         states, next_states, entropys, rewards, is_done, log_probs = self.reply_buffer.get_batch()
-        state_actions_values = self.critic(states)
+        state_actions_values = self.value_estimator(states)
 
         R = 0
         returns = []
@@ -42,19 +38,18 @@ class VPG(nn.Module):
             returns.insert(0, R)
 
         returns = torch.tensor([returns]).view(-1, 1).cuda()
-
         # remove state_actions_values from td error to have REINFORCE otherwise is VPG
         td_error = returns - state_actions_values
 
         # critic update
         critic_loss = F.mse_loss(state_actions_values, returns.detach())
-        self.critic_optimizer.zero_grad()
+        self.value_optimizer.zero_grad()
         critic_loss.backward()
-        self.critic_optimizer.step()
+        self.value_optimizer.step()
 
         # actor update
         # entropy term is suppose to force exploration, you can drop it if you want
-        actor_loss = (-log_probs * td_error.detach()).mean() + -entropys.mean() * 1  # this is entropy weight
+        actor_loss = (-log_probs * td_error.detach()).mean() + -entropys.mean() * .01  # this is entropy weight
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()

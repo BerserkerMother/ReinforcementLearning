@@ -58,8 +58,6 @@ def main():
                 loss_tracker.update(loss_actor + loss_critic)
                 network.reply_buffer.reset()
                 break
-        if episode % 10 == 0:
-            network.update_target_network()
         print('episode: %d, reward: %f, length: %d, loss: %f' % (episode, ep_reward, ep_length, loss_tracker.value))
 
 
